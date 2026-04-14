@@ -1,6 +1,6 @@
 module go-media-manage
 
-go 1.22
+go 1.26
 
 require github.com/spf13/cobra v1.8.0
 
