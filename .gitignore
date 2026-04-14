@@ -11,6 +11,12 @@ go-media-manage
 *.out
 /vendor/
 
+# Test data
+/tmp/
+
+# Cache
+matches.json
+
 # Claude Code
 .claude/settings.local.json
 

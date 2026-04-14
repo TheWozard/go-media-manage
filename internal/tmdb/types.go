@@ -103,6 +103,72 @@ type MovieDetail struct {
 	Releases    Releases    `json:"releases"`
 }
 
+// Episode group types
+
+type EpisodeGroupList struct {
+	Results []EpisodeGroupSummary `json:"results"`
+}
+
+type EpisodeGroupSummary struct {
+	ID           string `json:"id"`
+	Name         string `json:"name"`
+	Description  string `json:"description"`
+	EpisodeCount int    `json:"episode_count"`
+	GroupCount   int    `json:"group_count"`
+	Type         int    `json:"type"` // 1=Air date 2=Absolute 3=DVD 4=Digital 5=Story arc 6=Production 7=TV
+}
+
+func (s EpisodeGroupSummary) TypeName() string {
+	switch s.Type {
+	case 1:
+		return "Original air date"
+	case 2:
+		return "Absolute"
+	case 3:
+		return "DVD"
+	case 4:
+		return "Digital"
+	case 5:
+		return "Story arc"
+	case 6:
+		return "Production"
+	case 7:
+		return "TV"
+	default:
+		return "Unknown"
+	}
+}
+
+type EpisodeGroup struct {
+	ID     string               `json:"id"`
+	Name   string               `json:"name"`
+	Type   int                  `json:"type"`
+	Groups []EpisodeGroupSeason `json:"groups"`
+}
+
+type EpisodeGroupSeason struct {
+	ID       string         `json:"id"`
+	Name     string         `json:"name"`
+	Order    int            `json:"order"` // 0-indexed display order
+	Episodes []GroupEpisode `json:"episodes"`
+}
+
+// GroupEpisode is an episode as it appears within an episode group.
+// Order is its 0-indexed position within the group season.
+type GroupEpisode struct {
+	ID            int     `json:"id"`
+	Name          string  `json:"name"`
+	Overview      string  `json:"overview"`
+	SeasonNumber  int     `json:"season_number"`  // original TMDB season
+	EpisodeNumber int     `json:"episode_number"` // original TMDB episode
+	AirDate       string  `json:"air_date"`
+	StillPath     string  `json:"still_path"`
+	VoteAverage   float64 `json:"vote_average"`
+	VoteCount     int     `json:"vote_count"`
+	Runtime       int     `json:"runtime"`
+	Order         int     `json:"order"` // position within this group season
+}
+
 // Shared types
 
 type Genre struct {

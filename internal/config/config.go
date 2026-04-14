@@ -8,9 +8,8 @@ import (
 )
 
 type Config struct {
-	TMDBAPIKey string `json:"tmdb_api_key"`
-	Language   string `json:"language"`
-	CacheDir   string `json:"cache_dir"`
+	TMDBToken string `json:"tmdb_read_access_token"`
+	Language  string `json:"language"`
 }
 
 func configPath() (string, error) {
@@ -21,29 +20,13 @@ func configPath() (string, error) {
 	return filepath.Join(home, ".config", "go-media-manage", "config.json"), nil
 }
 
-func DefaultCacheDir() (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(home, ".cache", "go-media-manage"), nil
-}
-
 func Load() (*Config, error) {
 	path, err := configPath()
 	if err != nil {
 		return nil, err
 	}
 
-	cacheDir, err := DefaultCacheDir()
-	if err != nil {
-		return nil, err
-	}
-
-	cfg := &Config{
-		Language: "en-US",
-		CacheDir: cacheDir,
-	}
+	cfg := &Config{Language: "en-US"}
 
 	data, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
@@ -57,12 +40,8 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("parsing config: %w", err)
 	}
 
-	// Fill defaults for fields not in file
 	if cfg.Language == "" {
 		cfg.Language = "en-US"
-	}
-	if cfg.CacheDir == "" {
-		cfg.CacheDir = cacheDir
 	}
 
 	return cfg, nil
@@ -87,8 +66,8 @@ func (c *Config) Save() error {
 }
 
 func (c *Config) Validate() error {
-	if c.TMDBAPIKey == "" {
-		return fmt.Errorf("TMDB API key not set — run: go-media-manage config set-key <key>")
+	if c.TMDBToken == "" {
+		return fmt.Errorf("TMDB Read Access Token not set — run: go-media-manage config set-token <token>")
 	}
 	return nil
 }

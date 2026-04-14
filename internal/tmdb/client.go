@@ -15,14 +15,14 @@ const (
 )
 
 type Client struct {
-	apiKey     string
+	token      string
 	language   string
 	httpClient *http.Client
 }
 
-func NewClient(apiKey, language string) *Client {
+func NewClient(token, language string) *Client {
 	return &Client{
-		apiKey:   apiKey,
+		token:    token,
 		language: language,
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
@@ -34,18 +34,24 @@ func (c *Client) get(path string, params url.Values, out interface{}) error {
 	if params == nil {
 		params = url.Values{}
 	}
-	params.Set("api_key", c.apiKey)
 	params.Set("language", c.language)
 
 	u := fmt.Sprintf("%s%s?%s", baseURL, path, params.Encode())
-	resp, err := c.httpClient.Get(u)
+	req, err := http.NewRequest(http.MethodGet, u, nil)
+	if err != nil {
+		return fmt.Errorf("building request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+c.token)
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("HTTP request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode == 401 {
-		return fmt.Errorf("invalid TMDB API key")
+		return fmt.Errorf("invalid TMDB Read Access Token")
 	}
 	if resp.StatusCode == 404 {
 		return fmt.Errorf("not found")
@@ -107,6 +113,22 @@ func (c *Client) GetMovie(id int) (*MovieDetail, error) {
 		return nil, err
 	}
 	return &detail, nil
+}
+
+func (c *Client) GetEpisodeGroups(showID int) ([]EpisodeGroupSummary, error) {
+	var result EpisodeGroupList
+	if err := c.get(fmt.Sprintf("/tv/%d/episode_groups", showID), nil, &result); err != nil {
+		return nil, err
+	}
+	return result.Results, nil
+}
+
+func (c *Client) GetEpisodeGroup(groupID string) (*EpisodeGroup, error) {
+	var group EpisodeGroup
+	if err := c.get(fmt.Sprintf("/tv/episode_group/%s", groupID), nil, &group); err != nil {
+		return nil, err
+	}
+	return &group, nil
 }
 
 // ImageURL returns the full URL for an image path.

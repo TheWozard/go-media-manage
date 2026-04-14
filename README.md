@@ -58,10 +58,10 @@ go install go-media-manage@latest
 
 ## Setup
 
-Get a free API key from [themoviedb.org/settings/api](https://www.themoviedb.org/settings/api), then:
+Get a free Read Access Token from [themoviedb.org/settings/api](https://www.themoviedb.org/settings/api) (under the "API Read Access Token" section), then:
 
 ```sh
-go-media-manage config set-key YOUR_TMDB_API_KEY
+go-media-manage config set-token YOUR_READ_ACCESS_TOKEN
 ```
 
 ## Usage
@@ -109,16 +109,15 @@ Multiple results — pick one:
 
 ## Configuration
 
-Config is stored at `~/.config/go-media-manage/config.json`. Match cache is stored at `~/.cache/go-media-manage/matches.json`.
+Config is stored at `~/.config/go-media-manage/config.json`. The match cache (`matches.json`) is written directly into the scanned directory, alongside the media files.
 
 ```sh
 go-media-manage config show
 ```
 
 ```
-TMDB API key : abcd****ef12
-Language     : en-US
-Cache dir    : /home/user/.cache/go-media-manage
+TMDB token : abcd****ef12
+Language   : en-US
 ```
 
 ## NFO format

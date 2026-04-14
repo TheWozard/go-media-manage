@@ -20,35 +20,34 @@ var configShowCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		key := cfg.TMDBAPIKey
-		if len(key) > 8 {
-			key = key[:4] + "****" + key[len(key)-4:]
-		} else if key != "" {
-			key = "****"
+		tok := cfg.TMDBToken
+		if len(tok) > 8 {
+			tok = tok[:4] + "****" + tok[len(tok)-4:]
+		} else if tok != "" {
+			tok = "****"
 		} else {
-			key = "(not set)"
+			tok = "(not set)"
 		}
-		fmt.Printf("TMDB API key : %s\n", key)
-		fmt.Printf("Language     : %s\n", cfg.Language)
-		fmt.Printf("Cache dir    : %s\n", cfg.CacheDir)
+		fmt.Printf("TMDB token : %s\n", tok)
+		fmt.Printf("Language   : %s\n", cfg.Language)
 		return nil
 	},
 }
 
-var configSetKeyCmd = &cobra.Command{
-	Use:   "set-key <api-key>",
-	Short: "Set TMDB API key",
+var configSetTokenCmd = &cobra.Command{
+	Use:   "set-token <read-access-token>",
+	Short: "Set TMDB Read Access Token",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg, err := config.Load()
 		if err != nil {
 			return err
 		}
-		cfg.TMDBAPIKey = args[0]
+		cfg.TMDBToken = args[0]
 		if err := cfg.Save(); err != nil {
 			return err
 		}
-		fmt.Println("API key saved.")
+		fmt.Println("Read Access Token saved.")
 		return nil
 	},
 }
@@ -72,6 +71,6 @@ var configSetLangCmd = &cobra.Command{
 }
 
 func init() {
-	configCmd.AddCommand(configShowCmd, configSetKeyCmd, configSetLangCmd)
+	configCmd.AddCommand(configShowCmd, configSetTokenCmd, configSetLangCmd)
 	rootCmd.AddCommand(configCmd)
 }

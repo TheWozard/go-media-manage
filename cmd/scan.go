@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -22,6 +23,7 @@ var (
 	flagType    string
 	flagDryRun  bool
 	flagForce   bool
+	flagNoArt   bool
 )
 
 var scanCmd = &cobra.Command{
@@ -35,6 +37,7 @@ func init() {
 	scanCmd.Flags().StringVarP(&flagType, "type", "t", "auto", "Media type: auto, tv, movie")
 	scanCmd.Flags().BoolVar(&flagDryRun, "dry-run", false, "Print actions without writing files")
 	scanCmd.Flags().BoolVarP(&flagForce, "force", "f", false, "Re-fetch even if cached")
+	scanCmd.Flags().BoolVar(&flagNoArt, "no-art", false, "Write NFO files only, skip image downloads")
 	rootCmd.AddCommand(scanCmd)
 }
 
@@ -66,8 +69,8 @@ func runScan(cmd *cobra.Command, args []string) error {
 	fmt.Printf("Detected type : %s\n", result.MediaType)
 	fmt.Printf("Title         : %s\n", result.Title)
 
-	client := tmdb.NewClient(cfg.TMDBAPIKey, cfg.Language)
-	c, err := cache.New(cfg.CacheDir)
+	client := tmdb.NewClient(cfg.TMDBToken, cfg.Language)
+	c, err := cache.New(dir)
 	if err != nil {
 		return err
 	}
@@ -85,12 +88,13 @@ func runScan(cmd *cobra.Command, args []string) error {
 // ─── TV ──────────────────────────────────────────────────────────────────────
 
 func processTVShow(dir string, result *scanner.ScanResult, client *tmdb.Client, c *cache.Cache) error {
-	// Resolve TMDB ID
 	var showID int
+	var groupID string
 
-	if entry, ok := c.Get("tv", result.Title); ok && !flagForce {
-		fmt.Printf("Cache hit: %s → TMDB %d\n", result.Title, entry.TMDBID)
+	if entry, ok := c.Get(); ok && !flagForce {
+		fmt.Printf("Cache hit: %s → TMDB %d\n", entry.Title, entry.TMDBID)
 		showID = entry.TMDBID
+		groupID = entry.EpisodeGroupID
 	} else {
 		fmt.Printf("Searching TMDB for TV show: %q\n", result.Title)
 		shows, err := client.SearchTV(result.Title)
@@ -107,8 +111,17 @@ func processTVShow(dir string, result *scanner.ScanResult, client *tmdb.Client, 
 		}
 		showID = chosen.ID
 
+		// Offer episode groups if any exist
+		groups, err := client.GetEpisodeGroups(showID)
+		if err == nil && len(groups) > 0 {
+			groupID, err = pickEpisodeGroup(groups)
+			if err != nil {
+				return err
+			}
+		}
+
 		if !flagDryRun {
-			if err := c.Set("tv", result.Title, chosen.ID, chosen.Name); err != nil {
+			if err := c.Set("tv", chosen.Name, chosen.ID, groupID); err != nil {
 				fmt.Fprintf(os.Stderr, "warning: could not save to cache: %v\n", err)
 			}
 		}
@@ -135,64 +148,114 @@ func processTVShow(dir string, result *scanner.ScanResult, client *tmdb.Client, 
 	if err := nfo.WriteTVShow(dir, detail); err != nil {
 		return err
 	}
-	fmt.Println("Downloading show artwork …")
-	if err := images.DownloadTVShow(dir, detail); err != nil {
-		fmt.Fprintf(os.Stderr, "warning: %v\n", err)
+	if !flagNoArt {
+		fmt.Println("Downloading show artwork …")
+		if err := images.DownloadTVShow(dir, detail); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: %v\n", err)
+		}
 	}
 
-	// Group files by season
 	bySeasonDir := groupBySeasonDir(result.Files)
-
-	// Determine which seasons we need
 	seasons := uniqueSeasons(result.Files)
 
-	for _, seasonNum := range seasons {
-		fmt.Printf("Fetching season %d …\n", seasonNum)
-		season, err := client.GetSeason(showID, seasonNum)
+	// Build episode group map if one was selected
+	var groupMap map[[2]int]*tmdb.Episode
+	if groupID != "" {
+		fmt.Printf("Fetching episode group %s …\n", groupID)
+		group, err := client.GetEpisodeGroup(groupID)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "warning: season %d: %v\n", seasonNum, err)
-			continue
+			fmt.Fprintf(os.Stderr, "warning: could not fetch episode group: %v\n", err)
+		} else {
+			groupMap = buildGroupMap(group)
+			fmt.Printf("Using episode group: %s\n", group.Name)
 		}
+	}
 
-		// Episode lookup map
-		epMap := make(map[int]*tmdb.Episode)
-		for i := range season.Episodes {
-			epMap[season.Episodes[i].EpisodeNumber] = &season.Episodes[i]
-		}
-
-		// Write season NFO in the season's directory
-		for seasonDir := range bySeasonDir {
-			filesInDir := bySeasonDir[seasonDir]
-			if len(filesInDir) == 0 || filesInDir[0].Season != seasonNum {
+	for _, seasonNum := range seasons {
+		if groupMap != nil {
+			// Write a minimal season NFO from the group data; skip season poster
+			for seasonDir := range bySeasonDir {
+				filesInDir := bySeasonDir[seasonDir]
+				if len(filesInDir) == 0 || filesInDir[0].Season != seasonNum {
+					continue
+				}
+				fakeSeason := &tmdb.Season{SeasonNumber: seasonNum, Name: fmt.Sprintf("Season %d", seasonNum)}
+				fmt.Printf("  Writing season.nfo → %s\n", seasonDir)
+				if err := nfo.WriteSeason(seasonDir, fakeSeason, showID); err != nil {
+					fmt.Fprintf(os.Stderr, "  warning: %v\n", err)
+				}
+			}
+		} else {
+			fmt.Printf("Fetching season %d …\n", seasonNum)
+			season, err := client.GetSeason(showID, seasonNum)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "warning: season %d: %v\n", seasonNum, err)
 				continue
 			}
-			fmt.Printf("  Writing season.nfo → %s\n", seasonDir)
-			if err := nfo.WriteSeason(seasonDir, season, showID); err != nil {
-				fmt.Fprintf(os.Stderr, "  warning: %v\n", err)
+
+			// Episode lookup map for standard ordering
+			epMap := make(map[int]*tmdb.Episode)
+			for i := range season.Episodes {
+				epMap[season.Episodes[i].EpisodeNumber] = &season.Episodes[i]
 			}
+
+			for seasonDir := range bySeasonDir {
+				filesInDir := bySeasonDir[seasonDir]
+				if len(filesInDir) == 0 || filesInDir[0].Season != seasonNum {
+					continue
+				}
+				fmt.Printf("  Writing season.nfo → %s\n", seasonDir)
+				if err := nfo.WriteSeason(seasonDir, season, showID); err != nil {
+					fmt.Fprintf(os.Stderr, "  warning: %v\n", err)
+				}
+			}
+
+			if !flagNoArt {
+				if err := images.DownloadSeason(dir, season); err != nil {
+					fmt.Fprintf(os.Stderr, "  warning: season %d poster: %v\n", seasonNum, err)
+				}
+			}
+
+			for _, f := range result.Files {
+				if f.Season != seasonNum {
+					continue
+				}
+				ep, ok := epMap[f.Episode]
+				if !ok {
+					fmt.Fprintf(os.Stderr, "  warning: S%02dE%02d not found on TMDB\n", f.Season, f.Episode)
+					continue
+				}
+				fmt.Printf("  S%02dE%02d %s\n", ep.SeasonNumber, ep.EpisodeNumber, ep.Name)
+				if err := nfo.WriteEpisode(f.Path, ep, showID); err != nil {
+					fmt.Fprintf(os.Stderr, "  warning: nfo: %v\n", err)
+				}
+				if !flagNoArt {
+					if err := images.DownloadEpisodeThumb(f.Path, ep); err != nil {
+						fmt.Fprintf(os.Stderr, "  warning: thumb: %v\n", err)
+					}
+				}
+			}
+			continue // skip group episode processing below
 		}
 
-		// Season poster goes into show root
-		if err := images.DownloadSeason(dir, season); err != nil {
-			fmt.Fprintf(os.Stderr, "  warning: season %d poster: %v\n", seasonNum, err)
-		}
-
-		// Process each episode file for this season
+		// Group episode processing
 		for _, f := range result.Files {
 			if f.Season != seasonNum {
 				continue
 			}
-			ep, ok := epMap[f.Episode]
+			ep, ok := groupMap[[2]int{f.Season, f.Episode}]
 			if !ok {
-				fmt.Fprintf(os.Stderr, "  warning: S%02dE%02d not found on TMDB\n", f.Season, f.Episode)
+				fmt.Fprintf(os.Stderr, "  warning: S%02dE%02d not found in episode group\n", f.Season, f.Episode)
 				continue
 			}
-			fmt.Printf("  S%02dE%02d %s\n", ep.SeasonNumber, ep.EpisodeNumber, ep.Name)
+			fmt.Printf("  S%02dE%02d %s\n", f.Season, f.Episode, ep.Name)
 			if err := nfo.WriteEpisode(f.Path, ep, showID); err != nil {
 				fmt.Fprintf(os.Stderr, "  warning: nfo: %v\n", err)
 			}
-			if err := images.DownloadEpisodeThumb(f.Path, ep); err != nil {
-				fmt.Fprintf(os.Stderr, "  warning: thumb: %v\n", err)
+			if !flagNoArt {
+				if err := images.DownloadEpisodeThumb(f.Path, ep); err != nil {
+					fmt.Fprintf(os.Stderr, "  warning: thumb: %v\n", err)
+				}
 			}
 		}
 	}
@@ -206,13 +269,8 @@ func processTVShow(dir string, result *scanner.ScanResult, client *tmdb.Client, 
 func processMovie(dir string, result *scanner.ScanResult, client *tmdb.Client, c *cache.Cache) error {
 	var movieID int
 
-	cacheKey := result.Title
-	if result.Year > 0 {
-		cacheKey = fmt.Sprintf("%s (%d)", result.Title, result.Year)
-	}
-
-	if entry, ok := c.Get("movie", cacheKey); ok && !flagForce {
-		fmt.Printf("Cache hit: %s → TMDB %d\n", cacheKey, entry.TMDBID)
+	if entry, ok := c.Get(); ok && !flagForce {
+		fmt.Printf("Cache hit: %s → TMDB %d\n", entry.Title, entry.TMDBID)
 		movieID = entry.TMDBID
 	} else {
 		fmt.Printf("Searching TMDB for movie: %q (year: %d)\n", result.Title, result.Year)
@@ -235,7 +293,7 @@ func processMovie(dir string, result *scanner.ScanResult, client *tmdb.Client, c
 			if len(chosen.ReleaseDate) >= 4 {
 				resolvedTitle += " (" + chosen.ReleaseDate[:4] + ")"
 			}
-			if err := c.Set("movie", cacheKey, chosen.ID, resolvedTitle); err != nil {
+			if err := c.Set("movie", resolvedTitle, chosen.ID, ""); err != nil {
 				fmt.Fprintf(os.Stderr, "warning: could not save to cache: %v\n", err)
 			}
 		}
@@ -257,9 +315,11 @@ func processMovie(dir string, result *scanner.ScanResult, client *tmdb.Client, c
 	if err := nfo.WriteMovie(dir, detail); err != nil {
 		return err
 	}
-	fmt.Println("Downloading artwork …")
-	if err := images.DownloadMovie(dir, detail); err != nil {
-		fmt.Fprintf(os.Stderr, "warning: %v\n", err)
+	if !flagNoArt {
+		fmt.Println("Downloading artwork …")
+		if err := images.DownloadMovie(dir, detail); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: %v\n", err)
+		}
 	}
 
 	fmt.Println("Done.")
@@ -365,6 +425,66 @@ func groupBySeasonDir(files []*scanner.MediaFile) map[string][]*scanner.MediaFil
 	m := make(map[string][]*scanner.MediaFile)
 	for _, f := range files {
 		m[f.Dir] = append(m[f.Dir], f)
+	}
+	return m
+}
+
+func pickEpisodeGroup(groups []tmdb.EpisodeGroupSummary) (string, error) {
+	fmt.Println("\nEpisode groups available — pick one (or 0 for standard ordering):")
+	for i, g := range groups {
+		fmt.Printf("  [%d] %s (%s, %d episodes)\n", i+1, g.Name, g.TypeName(), g.EpisodeCount)
+	}
+	fmt.Println("  [0] None / use standard ordering")
+
+	n, err := readInt("> ", 0, len(groups))
+	if err != nil {
+		return "", err
+	}
+	if n == 0 {
+		return "", nil
+	}
+	return groups[n-1].ID, nil
+}
+
+var groupSeasonNameRe = regexp.MustCompile(`(?i)season\s*(\d+)`)
+
+// groupSeasonNumber extracts the season number from a group season name
+// ("Season 1" → 1, "Season 01" → 1). Falls back to Order+1 for unlabelled
+// seasons, and returns 0 for specials/extras so they don't collide with S01.
+func groupSeasonNumber(name string, order int) int {
+	if m := groupSeasonNameRe.FindStringSubmatch(name); m != nil {
+		n, _ := strconv.Atoi(m[1])
+		return n
+	}
+	lower := strings.ToLower(name)
+	if strings.Contains(lower, "special") || strings.Contains(lower, "extra") ||
+		strings.Contains(lower, "ova") || strings.Contains(lower, "bonus") {
+		return 0
+	}
+	return order + 1
+}
+
+// buildGroupMap returns a map of (groupSeasonNum, groupEpisodeNum) → Episode.
+func buildGroupMap(group *tmdb.EpisodeGroup) map[[2]int]*tmdb.Episode {
+	m := make(map[[2]int]*tmdb.Episode)
+	for _, gs := range group.Groups {
+		seasonNum := groupSeasonNumber(gs.Name, gs.Order)
+		for _, gep := range gs.Episodes {
+			epNum := gep.Order + 1
+			ep := &tmdb.Episode{
+				ID:            gep.ID,
+				Name:          gep.Name,
+				Overview:      gep.Overview,
+				SeasonNumber:  seasonNum,
+				EpisodeNumber: epNum,
+				AirDate:       gep.AirDate,
+				StillPath:     gep.StillPath,
+				VoteAverage:   gep.VoteAverage,
+				VoteCount:     gep.VoteCount,
+				Runtime:       gep.Runtime,
+			}
+			m[[2]int{seasonNum, epNum}] = ep
+		}
 	}
 	return m
 }
