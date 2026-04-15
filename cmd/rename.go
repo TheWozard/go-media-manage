@@ -81,7 +81,7 @@ func renameTVShow(dir string, sc scope.Scope) error {
 
 	err = sc.WalkDir(dir, func(path string, d os.DirEntry) error {
 		if d.IsDir() {
-			if n := scanner.ParseSeasonDir(path); n > 0 {
+			if n, ok := scanner.ParseSeasonDir(path); ok {
 				seasonDirs = append(seasonDirs, seasonDirEntry{path, n})
 			}
 			return nil
@@ -115,6 +115,9 @@ func renameTVShow(dir string, sc scope.Scope) error {
 	// Rename season directories after files are done
 	for _, sd := range seasonDirs {
 		standard := fmt.Sprintf("Season %02d", sd.n)
+		if sd.n == 0 {
+			standard = "Specials"
+		}
 		if filepath.Base(sd.path) == standard {
 			skipped++
 			continue
@@ -136,7 +139,7 @@ func renameTVShow(dir string, sc scope.Scope) error {
 // ─── Movie ────────────────────────────────────────────────────────────────────
 
 func renameMovie(dir string, sc scope.Scope) error {
-	if sc.Season() > 0 {
+	if sc.IsSeasonScope() {
 		return fmt.Errorf("season scope is not valid for movies")
 	}
 	movie, err := nfo.ReadMovie(filepath.Join(dir, "movie.nfo"))

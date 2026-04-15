@@ -9,17 +9,18 @@ import (
 
 // Scope controls which part of the media tree to operate on.
 type Scope struct {
-	all    bool
-	root   bool
-	season int // >0 means a specific season number
+	all       bool
+	root      bool
+	season    int
+	seasonSet bool // true when a specific season (including 0) was selected
 }
 
 // FromDir infers a Scope from the directory path.
 // If the directory name matches a season pattern (e.g. "Season 01", "S02"),
 // returns a season-specific Scope. Otherwise returns an all-inclusive Scope.
 func FromDir(dir string) Scope {
-	if n := scanner.ParseSeasonDir(dir); n > 0 {
-		return Scope{season: n}
+	if n, ok := scanner.ParseSeasonDir(dir); ok {
+		return Scope{season: n, seasonSet: true}
 	}
 	return Scope{all: true}
 }
@@ -33,7 +34,7 @@ func Root() Scope {
 // For a season-specific Scope the show root is the parent of dir;
 // for all other scopes it is dir itself.
 func (sc Scope) RootDir(dir string) string {
-	if sc.season > 0 {
+	if sc.seasonSet {
 		return filepath.Dir(dir)
 	}
 	return dir
@@ -43,10 +44,10 @@ func (sc Scope) RootDir(dir string) string {
 func (sc Scope) IncludesRoot() bool { return sc.all || sc.root }
 
 // IncludesSeason reports whether the given season number is in scope.
-func (sc Scope) IncludesSeason(n int) bool { return sc.all || sc.season == n }
+func (sc Scope) IncludesSeason(n int) bool { return sc.all || (sc.seasonSet && sc.season == n) }
 
-// Season returns the specific season number, or 0 if the scope is not season-specific.
-func (sc Scope) Season() int { return sc.season }
+// IsSeasonScope reports whether a specific season (including season 0) was selected.
+func (sc Scope) IsSeasonScope() bool { return sc.seasonSet }
 
 // Files returns the subset of files whose season falls within the scope.
 func (sc Scope) Files(files []*scanner.MediaFile) []*scanner.MediaFile {
@@ -81,8 +82,10 @@ func (sc Scope) WalkDir(dir string, fn func(path string, d os.DirEntry) error) e
 				return nil
 			case sc.root:
 				return filepath.SkipDir
-			case sc.season > 0 && scanner.ParseSeasonDir(path) != sc.season:
+			case sc.seasonSet:
+			if n, ok := scanner.ParseSeasonDir(path); !ok || n != sc.season {
 				return filepath.SkipDir
+			}
 			}
 		}
 		return fn(path, d)

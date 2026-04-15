@@ -53,14 +53,14 @@ func DownloadTVShow(dir string, detail *tmdb.TVShowDetail, force bool) error {
 	if err := download(tmdb.ImageURL(detail.PosterPath), filepath.Join(dir, "poster.jpg"), force); err != nil {
 		return fmt.Errorf("show poster: %w", err)
 	}
-	if err := download(tmdb.ImageURL(detail.BackdropPath), filepath.Join(dir, "fanart.jpg"), force); err != nil {
-		return fmt.Errorf("show fanart: %w", err)
+	if err := download(tmdb.ImageURL(detail.BackdropPath), filepath.Join(dir, "backdrop.jpg"), force); err != nil {
+		return fmt.Errorf("show backdrop: %w", err)
 	}
 	return nil
 }
 
 // DownloadSeasonPosters downloads a poster for every season in the list.
-// Filenames follow the Kodi convention: season01-poster.jpg, season00-poster.jpg for specials.
+// Filenames follow Jellyfin convention: season01-poster.jpg, season-specials-poster.jpg for season 0.
 // Uses the SeasonSummary slice from TVShowDetail.Seasons so no extra API calls are needed.
 func DownloadSeasonPosters(showDir string, seasons []tmdb.SeasonSummary, force bool) error {
 	for _, s := range seasons {
@@ -69,7 +69,7 @@ func DownloadSeasonPosters(showDir string, seasons []tmdb.SeasonSummary, force b
 		}
 		var name string
 		if s.SeasonNumber == 0 {
-			name = "season00-poster.jpg"
+			name = "season-specials-poster.jpg"
 		} else {
 			name = fmt.Sprintf("season%02d-poster.jpg", s.SeasonNumber)
 		}
@@ -96,8 +96,8 @@ func DownloadMovie(dir string, detail *tmdb.MovieDetail, force bool) error {
 	if err := download(tmdb.ImageURL(detail.PosterPath), filepath.Join(dir, "poster.jpg"), force); err != nil {
 		return fmt.Errorf("movie poster: %w", err)
 	}
-	if err := download(tmdb.ImageURL(detail.BackdropPath), filepath.Join(dir, "fanart.jpg"), force); err != nil {
-		return fmt.Errorf("movie fanart: %w", err)
+	if err := download(tmdb.ImageURL(detail.BackdropPath), filepath.Join(dir, "backdrop.jpg"), force); err != nil {
+		return fmt.Errorf("movie backdrop: %w", err)
 	}
 	return nil
 }

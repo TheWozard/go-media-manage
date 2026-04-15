@@ -1,6 +1,6 @@
 # go-media-manage
 
-A CLI replacement for TinyMediaManager. Point it at a directory of TV shows or movies and it will match against [TMDB](https://www.themoviedb.org/), download artwork, write [Kodi](https://kodi.tv/)-compatible NFO files, and rename your files — no GUI required.
+A CLI replacement for TinyMediaManager. Point it at a directory of TV shows or movies and it will match against [TMDB](https://www.themoviedb.org/), download artwork, write [Jellyfin](https://jellyfin.org/)-compatible NFO files, and rename your files — no GUI required.
 
 ## Features
 
@@ -9,8 +9,8 @@ A CLI replacement for TinyMediaManager. Point it at a directory of TV shows or m
 - Searches TMDB and prompts you to confirm when multiple matches exist
 - Optional episode group selection for alternative orderings (absolute, DVD, etc.)
 - Caches the match in `matches.json` inside each media directory
-- Writes Kodi-compatible NFO files for shows, seasons, episodes, and movies
-- Downloads poster, fanart, season posters, and episode thumbnails
+- Writes Jellyfin-compatible NFO files for shows, seasons, episodes, and movies
+- Downloads poster, backdrop, season posters, and episode thumbnails
 - Renames video files and NFOs to a clean standard format using NFO metadata
 
 ## Workflow
@@ -19,8 +19,8 @@ A CLI replacement for TinyMediaManager. Point it at a directory of TV shows or m
 # 1. Match — interactive TMDB lookup, saves matches.json
 go-media-manage match /media/TV/Breaking\ Bad
 
-# 2. Pull — fetch metadata and artwork (scoped, opt-in)
-go-media-manage pull /media/TV/Breaking\ Bad all --metadata --images
+# 2. Pull — fetch metadata and artwork (opt-in)
+go-media-manage pull /media/TV/Breaking\ Bad --metadata --images
 
 # 3. Rename — rename files using the written NFO metadata
 go-media-manage rename /media/TV/Breaking\ Bad
@@ -33,7 +33,7 @@ go-media-manage rename /media/TV/Breaking\ Bad
 /media/TV/Breaking Bad/
 ├── tvshow.nfo
 ├── poster.jpg
-├── fanart.jpg
+├── backdrop.jpg
 ├── season01-poster.jpg
 ├── Season 01/
 │   ├── season.nfo
@@ -51,7 +51,7 @@ go-media-manage rename /media/TV/Breaking\ Bad
 ├── Inception (2010).mkv
 ├── movie.nfo
 ├── poster.jpg
-└── fanart.jpg
+└── backdrop.jpg
 ```
 
 ## Installation
@@ -113,17 +113,13 @@ Episode groups available — pick one (or 0 for standard ordering):
 
 ### `pull`
 
-Reads `matches.json` and downloads metadata and artwork for the given scope. Errors if `match` hasn't been run yet.
+Reads `matches.json` and downloads metadata and artwork. Scope is auto-detected from the directory: a `Season N` directory targets that season only; any other directory targets everything. Use `--root` to restrict to show-level files only. Errors if `match` hasn't been run yet.
 
 ```sh
-go-media-manage pull <directory> <scope> [flags]
-
-Scope:
-  all       Everything — show root, all seasons, and all episodes
-  root      Show-level only (tvshow.nfo, poster, fanart)
-  s1,s2,…   A single season (season.nfo, season poster, episode NFOs/thumbs)
+go-media-manage pull <directory> [flags]
 
 Flags:
+  --root          Show-level only (tvshow.nfo, poster, backdrop)
   --metadata      Write NFO files
   --images        Download missing artwork
   --all-images    Download all artwork, replacing existing files
@@ -135,13 +131,13 @@ At least one of `--metadata`, `--images`, or `--all-images` must be provided.
 
 ```sh
 # Full first-time pull
-go-media-manage pull /media/TV/Breaking\ Bad all --metadata --images
+go-media-manage pull /media/TV/Breaking\ Bad --metadata --images
 
 # Re-fetch metadata only for season 2
-go-media-manage pull /media/TV/Breaking\ Bad s2 --metadata
+go-media-manage pull "/media/TV/Breaking Bad/Season 02" --metadata
 
 # Force re-download all artwork
-go-media-manage pull /media/TV/Breaking\ Bad all --all-images
+go-media-manage pull /media/TV/Breaking\ Bad --all-images
 ```
 
 ### `rename`
@@ -161,7 +157,7 @@ Characters illegal on common filesystems (`:`, `*`, `?`, etc.) are replaced with
 
 ### `cleanup`
 
-Moves all non-MKV files (NFOs, JPGs, JSONs, etc.) into an `archive/` subfolder at the root of the directory, preserving relative paths.
+Moves all non-MKV files (NFOs, JPGs, JSONs, etc.) into a `.archive/` subfolder at the root of the directory, preserving relative paths. Empty directories are removed after the move. `matches.json` is always skipped so the match cache is preserved.
 
 ```sh
 go-media-manage cleanup <directory>
@@ -184,6 +180,7 @@ The scanner recognises these patterns without any configuration:
 - `Show Name - s01e02 - Episode Title.mkv`
 - `Show_Name_1x02.mkv`
 - `1.mkv`, `2.mkv` … inside a `Season 01/` directory
+- `01 - Episode Title.mkv`, `01-Episode Title.mkv` … inside a `Season 01/` directory
 
 **Movies:**
 - `Movie Title (2020).mkv`
@@ -200,4 +197,4 @@ Language   : en-US
 
 ## NFO format
 
-NFO files follow the Kodi/XBMC schema and are compatible with Jellyfin, Emby, and any media server that reads Kodi metadata.
+NFO files follow the Jellyfin/Kodi XML schema and are compatible with Jellyfin, Emby, and any media server that reads Kodi-style metadata.

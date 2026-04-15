@@ -90,7 +90,7 @@ func runPull(cmd *cobra.Command, args []string) error {
 		}
 		return pullTV(dir, sc, result, entry, client)
 	case "movie":
-		if sc.Season() > 0 {
+		if sc.IsSeasonScope() {
 			return fmt.Errorf("season scope is not valid for movies — use all or root")
 		}
 		return pullMovie(dir, entry, client)
