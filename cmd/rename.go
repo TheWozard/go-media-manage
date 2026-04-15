@@ -48,21 +48,23 @@ func runRename(cmd *cobra.Command, args []string) error {
 		sc = scope.FromDir(dir)
 	}
 
-	// Detect mode by looking for tvshow.nfo or movie.nfo in the root
-	if _, err := os.Stat(filepath.Join(dir, "tvshow.nfo")); err == nil {
+	rootDir := sc.RootDir(dir)
+
+	// Detect mode by looking for tvshow.nfo or movie.nfo in the show root
+	if _, err := os.Stat(filepath.Join(rootDir, "tvshow.nfo")); err == nil {
 		return renameTVShow(dir, sc)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "movie.nfo")); err == nil {
+	if _, err := os.Stat(filepath.Join(rootDir, "movie.nfo")); err == nil {
 		return renameMovie(dir, sc)
 	}
 
-	return fmt.Errorf("no tvshow.nfo or movie.nfo found in %s — run 'pull' first", dir)
+	return fmt.Errorf("no tvshow.nfo or movie.nfo found in %s — run 'pull' first", rootDir)
 }
 
 // ─── TV ──────────────────────────────────────────────────────────────────────
 
 func renameTVShow(dir string, sc scope.Scope) error {
-	show, err := nfo.ReadTVShow(filepath.Join(dir, "tvshow.nfo"))
+	show, err := nfo.ReadTVShow(filepath.Join(sc.RootDir(dir), "tvshow.nfo"))
 	if err != nil {
 		return fmt.Errorf("reading tvshow.nfo: %w", err)
 	}

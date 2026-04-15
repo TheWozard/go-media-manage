@@ -29,6 +29,16 @@ func Root() Scope {
 	return Scope{root: true}
 }
 
+// RootDir returns the show root directory for the given target path.
+// For a season-specific Scope the show root is the parent of dir;
+// for all other scopes it is dir itself.
+func (sc Scope) RootDir(dir string) string {
+	if sc.season > 0 {
+		return filepath.Dir(dir)
+	}
+	return dir
+}
+
 // IncludesRoot reports whether show-level files (tvshow.nfo, poster, etc.) are in scope.
 func (sc Scope) IncludesRoot() bool { return sc.all || sc.root }
 

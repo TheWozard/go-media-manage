@@ -70,7 +70,7 @@ func runPull(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	c, err := cache.New(dir)
+	c, err := cache.New(sc.RootDir(dir))
 	if err != nil {
 		return err
 	}
@@ -102,6 +102,8 @@ func runPull(cmd *cobra.Command, args []string) error {
 // ─── TV ──────────────────────────────────────────────────────────────────────
 
 func pullTV(dir string, sc scope.Scope, result *scanner.ScanResult, entry *cache.Entry, client *tmdb.Client) error {
+	rootDir := sc.RootDir(dir)
+
 	detail, err := client.GetTVShow(entry.TMDBID)
 	if err != nil {
 		return fmt.Errorf("fetching show details: %w", err)
@@ -113,13 +115,13 @@ func pullTV(dir string, sc scope.Scope, result *scanner.ScanResult, entry *cache
 	if sc.IncludesRoot() {
 		if flagPullMetadata {
 			fmt.Println("Writing tvshow.nfo …")
-			if err := nfo.WriteTVShow(dir, detail); err != nil {
+			if err := nfo.WriteTVShow(rootDir, detail); err != nil {
 				return err
 			}
 		}
 		if flagPullImages || flagPullAllImages {
 			fmt.Println("Downloading show artwork …")
-			if err := images.DownloadTVShow(dir, detail, flagPullAllImages); err != nil {
+			if err := images.DownloadTVShow(rootDir, detail, flagPullAllImages); err != nil {
 				fmt.Fprintf(os.Stderr, "warning: %v\n", err)
 			}
 		}
@@ -142,7 +144,7 @@ func pullTV(dir string, sc scope.Scope, result *scanner.ScanResult, entry *cache
 		}
 		if len(subset) > 0 {
 			fmt.Println("Downloading season poster(s) …")
-			if err := images.DownloadSeasonPosters(dir, subset, flagPullAllImages); err != nil {
+			if err := images.DownloadSeasonPosters(rootDir, subset, flagPullAllImages); err != nil {
 				fmt.Fprintf(os.Stderr, "warning: %v\n", err)
 			}
 		}
