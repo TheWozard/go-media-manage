@@ -66,9 +66,9 @@ func (sc Scope) Seasons(files []*scanner.MediaFile) []int {
 
 // WalkDir walks dir, calling fn for each entry that falls within the scope.
 // fn is called for both files and in-scope directories (excluding dir itself).
-// Season directories outside the scope and the "archive" subdirectory are always skipped.
+// Season directories outside the scope and the ".archive" subdirectory are always skipped.
 func (sc Scope) WalkDir(dir string, fn func(path string, d os.DirEntry) error) error {
-	archiveDir := filepath.Join(dir, "archive")
+	archiveDir := filepath.Join(dir, ".archive")
 	return filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return nil

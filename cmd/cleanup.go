@@ -43,7 +43,7 @@ func runCleanup(cmd *cobra.Command, args []string) error {
 		sc = scope.FromDir(dir)
 	}
 
-	archiveDir := filepath.Join(dir, "archive")
+	archiveDir := filepath.Join(dir, ".archive")
 	var moved, skipped int
 
 	err = sc.WalkDir(dir, func(path string, d os.DirEntry) error {
@@ -51,6 +51,9 @@ func runCleanup(cmd *cobra.Command, args []string) error {
 			return nil
 		}
 		if strings.ToLower(filepath.Ext(path)) == ".mkv" {
+			return nil
+		}
+		if filepath.Base(path) == "matches.json" {
 			return nil
 		}
 
@@ -80,6 +83,36 @@ func runCleanup(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	fmt.Printf("\n%d file(s) moved, %d skipped.\n", moved, skipped)
+	// Collect all subdirectories (top-down), then remove empty ones bottom-up.
+	var dirs []string
+	filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if path == archiveDir {
+			return filepath.SkipDir
+		}
+		if !d.IsDir() || path == dir {
+			return nil
+		}
+		dirs = append(dirs, path)
+		return nil
+	})
+
+	var removed int
+	for i := len(dirs) - 1; i >= 0; i-- {
+		entries, err := os.ReadDir(dirs[i])
+		if err != nil || len(entries) > 0 {
+			continue
+		}
+		rel, _ := filepath.Rel(dir, dirs[i])
+		fmt.Printf("  removing empty dir: %s/\n", rel)
+		if err := os.Remove(dirs[i]); err != nil {
+			fmt.Fprintf(os.Stderr, "  error removing dir: %v\n", err)
+		}
+		removed++
+	}
+
+	fmt.Printf("\n%d file(s) moved, %d skipped, %d empty dir(s) removed.\n", moved, skipped, removed)
 	return nil
 }

@@ -49,6 +49,10 @@ var yearPattern = regexp.MustCompile(`\((\d{4})\)|[._\s](\d{4})[._\s]`)
 // seasonDirPattern matches directory names like "Season 1", "Season 01", "S01", "s2".
 var seasonDirPattern = regexp.MustCompile(`(?i)^s(?:eason\s*)?(\d{1,2})$`)
 
+// bareEpPattern matches filenames that start with an episode number followed by a
+// dash or space separator, e.g. "01 - Title" or "01-Title".
+var bareEpPattern = regexp.MustCompile(`^(\d{1,3})[\s-]`)
+
 // ParseSeasonDir returns the season number from a directory name, or 0 if not recognised.
 func ParseSeasonDir(dir string) int {
 	name := strings.TrimSpace(filepath.Base(dir))
@@ -114,6 +118,18 @@ func ParseFile(path string, hint MediaType) (*MediaFile, error) {
 		// Fall back: bare numeric filename (e.g. "1.mkv") inside a "Season N" directory
 		if ep, err := strconv.Atoi(baseNoExt); err == nil {
 			if s := ParseSeasonDir(filepath.Dir(path)); s > 0 {
+				mf.Type = TypeTV
+				mf.Season = s
+				mf.Episode = ep
+				mf.Title = cleanTitle(filepath.Base(filepath.Dir(filepath.Dir(path))))
+				return mf, nil
+			}
+		}
+
+		// Fall back: "NN - Title" or "NN-Title" inside a "Season N" directory
+		if m := bareEpPattern.FindStringSubmatch(baseNoExt); m != nil {
+			if s := ParseSeasonDir(filepath.Dir(path)); s > 0 {
+				ep, _ := strconv.Atoi(m[1])
 				mf.Type = TypeTV
 				mf.Season = s
 				mf.Episode = ep
