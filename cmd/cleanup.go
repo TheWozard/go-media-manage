@@ -7,18 +7,26 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"go-media-manage/internal/scope"
 )
+
+var flagCleanupRoot bool
 
 var cleanupCmd = &cobra.Command{
 	Use:   "cleanup <directory>",
 	Short: "Move non-MKV files to an archive folder",
 	Long: `Moves every non-MKV file (NFO, JPG, JSON, etc.) into an 'archive'
-subfolder at the root of the directory, preserving relative paths.`,
+subfolder at the root of the directory, preserving relative paths.
+
+Scope is inferred from the directory name: a "Season N" directory targets
+that season only; any other directory targets everything. Use --root to
+restrict to root-level files only.`,
 	Args: cobra.ExactArgs(1),
 	RunE: runCleanup,
 }
 
 func init() {
+	cleanupCmd.Flags().BoolVar(&flagCleanupRoot, "root", false, "Restrict to root-level files only")
 	rootCmd.AddCommand(cleanupCmd)
 }
 
@@ -28,21 +36,20 @@ func runCleanup(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	var sc scope.Scope
+	if flagCleanupRoot {
+		sc = scope.Root()
+	} else {
+		sc = scope.FromDir(dir)
+	}
+
 	archiveDir := filepath.Join(dir, "archive")
 	var moved, skipped int
 
-	err = filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return nil
-		}
+	err = sc.WalkDir(dir, func(path string, d os.DirEntry) error {
 		if d.IsDir() {
-			// Don't descend into the archive folder itself
-			if path == archiveDir {
-				return filepath.SkipDir
-			}
 			return nil
 		}
-
 		if strings.ToLower(filepath.Ext(path)) == ".mkv" {
 			return nil
 		}

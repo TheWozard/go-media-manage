@@ -4,14 +4,15 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
-	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
 	"go-media-manage/internal/nfo"
 	"go-media-manage/internal/scanner"
+	"go-media-manage/internal/scope"
 )
+
+var flagRenameRoot bool
 
 var renameCmd = &cobra.Command{
 	Use:   "rename <directory>",
@@ -20,12 +21,17 @@ var renameCmd = &cobra.Command{
 NFO, and thumbnail to a clean standard format.
 
 TV:    Show Name S01E01 - Episode Title.mkv
-Movie: Movie Title (2010).mkv`,
+Movie: Movie Title (2010).mkv
+
+Scope is inferred from the directory name: a "Season N" directory targets
+that season only; any other directory targets everything. Use --root to
+restrict to show-level files only.`,
 	Args: cobra.ExactArgs(1),
 	RunE: runRename,
 }
 
 func init() {
+	renameCmd.Flags().BoolVar(&flagRenameRoot, "root", false, "Restrict to show-level files only")
 	rootCmd.AddCommand(renameCmd)
 }
 
@@ -35,12 +41,19 @@ func runRename(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	var sc scope.Scope
+	if flagRenameRoot {
+		sc = scope.Root()
+	} else {
+		sc = scope.FromDir(dir)
+	}
+
 	// Detect mode by looking for tvshow.nfo or movie.nfo in the root
 	if _, err := os.Stat(filepath.Join(dir, "tvshow.nfo")); err == nil {
-		return renameTVShow(dir)
+		return renameTVShow(dir, sc)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "movie.nfo")); err == nil {
-		return renameMovie(dir)
+		return renameMovie(dir, sc)
 	}
 
 	return fmt.Errorf("no tvshow.nfo or movie.nfo found in %s — run 'pull' first", dir)
@@ -48,7 +61,7 @@ func runRename(cmd *cobra.Command, args []string) error {
 
 // ─── TV ──────────────────────────────────────────────────────────────────────
 
-func renameTVShow(dir string) error {
+func renameTVShow(dir string, sc scope.Scope) error {
 	show, err := nfo.ReadTVShow(filepath.Join(dir, "tvshow.nfo"))
 	if err != nil {
 		return fmt.Errorf("reading tvshow.nfo: %w", err)
@@ -64,15 +77,9 @@ func renameTVShow(dir string) error {
 	}
 	var seasonDirs []seasonDirEntry
 
-	err = filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
+	err = sc.WalkDir(dir, func(path string, d os.DirEntry) error {
 		if d.IsDir() {
-			if path == dir {
-				return nil
-			}
-			if n := parseSeasonName(filepath.Base(path)); n > 0 {
+			if n := scanner.ParseSeasonDir(path); n > 0 {
 				seasonDirs = append(seasonDirs, seasonDirEntry{path, n})
 			}
 			return nil
@@ -126,7 +133,10 @@ func renameTVShow(dir string) error {
 
 // ─── Movie ────────────────────────────────────────────────────────────────────
 
-func renameMovie(dir string) error {
+func renameMovie(dir string, sc scope.Scope) error {
+	if sc.Season() > 0 {
+		return fmt.Errorf("season scope is not valid for movies")
+	}
 	movie, err := nfo.ReadMovie(filepath.Join(dir, "movie.nfo"))
 	if err != nil {
 		return fmt.Errorf("reading movie.nfo: %w", err)
@@ -140,7 +150,6 @@ func renameMovie(dir string) error {
 		newBase += " (" + movie.Year + ")"
 	}
 
-	// Find the video file — take the first one that isn't already named correctly
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return err
@@ -175,7 +184,6 @@ func renameGroup(dir, oldBase, newBase string) (renamed, skipped int) {
 		{oldBase + ".nfo", newBase + ".nfo"},
 		{oldBase + "-thumb.jpg", newBase + "-thumb.jpg"},
 	}
-	// Add every video extension variant
 	for ext := range scanner.VideoExts {
 		candidates = append(candidates, struct{ old, new string }{oldBase + ext, newBase + ext})
 	}
@@ -185,7 +193,7 @@ func renameGroup(dir, oldBase, newBase string) (renamed, skipped int) {
 		newPath := filepath.Join(dir, pair.new)
 
 		if _, err := os.Stat(oldPath); os.IsNotExist(err) {
-			continue // file doesn't exist, nothing to do
+			continue
 		}
 		if pair.old == pair.new {
 			skipped++
@@ -206,19 +214,6 @@ func renameGroup(dir, oldBase, newBase string) (renamed, skipped int) {
 		renamed++
 	}
 	return
-}
-
-// parseSeasonName extracts the season number from a directory name such as
-// "Season 1", "Season 01", "S01", or "s2". Returns 0 if not recognised.
-var seasonDirRe = regexp.MustCompile(`(?i)^s(?:eason\s*)?(\d{1,2})$`)
-
-func parseSeasonName(name string) int {
-	m := seasonDirRe.FindStringSubmatch(strings.TrimSpace(name))
-	if m == nil {
-		return 0
-	}
-	n, _ := strconv.Atoi(m[1])
-	return n
 }
 
 // safeName strips characters that are illegal on common filesystems.

@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
-	"strings"
 
 	"github.com/spf13/cobra"
 	"go-media-manage/internal/cache"
@@ -13,6 +11,7 @@ import (
 	"go-media-manage/internal/images"
 	"go-media-manage/internal/nfo"
 	"go-media-manage/internal/scanner"
+	"go-media-manage/internal/scope"
 	"go-media-manage/internal/tmdb"
 )
 
@@ -20,20 +19,20 @@ var (
 	flagPullImages    bool
 	flagPullAllImages bool
 	flagPullMetadata  bool
+	flagPullRoot      bool
 )
 
 var pullCmd = &cobra.Command{
-	Use:   "pull <directory> <scope>",
+	Use:   "pull <directory>",
 	Short: "Download metadata and artwork using the cached match",
 	Long: `Reads matches.json from the directory and fetches data from TMDB.
 
-Scope:
-  all       Everything — show root, all seasons, and all episodes
-  root      Show-level only (tvshow.nfo, poster, fanart)
-  s1,s2,…   A single season (season.nfo, season poster, episode NFOs/thumbs)
+Scope is inferred from the directory name: a "Season N" directory targets
+that season only; any other directory targets everything. Use --root to
+restrict to show-level files only (tvshow.nfo, poster, fanart).
 
 Pass --images and/or --metadata to select what to fetch.`,
-	Args: cobra.ExactArgs(2),
+	Args: cobra.ExactArgs(1),
 	RunE: runPull,
 }
 
@@ -41,33 +40,10 @@ func init() {
 	pullCmd.Flags().BoolVar(&flagPullImages, "images", false, "Download missing artwork")
 	pullCmd.Flags().BoolVar(&flagPullAllImages, "all-images", false, "Download all artwork, replacing existing files")
 	pullCmd.Flags().BoolVar(&flagPullMetadata, "metadata", false, "Write NFO files")
+	pullCmd.Flags().BoolVar(&flagPullRoot, "root", false, "Restrict to show-level files only")
 	rootCmd.AddCommand(pullCmd)
 }
 
-// pullScope controls which part of the media tree to operate on.
-type pullScope struct {
-	all    bool
-	root   bool
-	season int // >0 means a specific season number
-}
-
-func (sc pullScope) includesRoot() bool        { return sc.all || sc.root }
-func (sc pullScope) includesSeason(n int) bool { return sc.all || sc.season == n }
-
-func parsePullScope(s string) (pullScope, error) {
-	switch strings.ToLower(s) {
-	case "all":
-		return pullScope{all: true}, nil
-	case "root":
-		return pullScope{root: true}, nil
-	}
-	if low := strings.ToLower(s); strings.HasPrefix(low, "s") {
-		if n, err := strconv.Atoi(low[1:]); err == nil && n > 0 {
-			return pullScope{season: n}, nil
-		}
-	}
-	return pullScope{}, fmt.Errorf("invalid scope %q — use all, root, or s1/s2/…", s)
-}
 
 func runPull(cmd *cobra.Command, args []string) error {
 	if !flagPullImages && !flagPullAllImages && !flagPullMetadata {
@@ -79,9 +55,11 @@ func runPull(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	sc, err := parsePullScope(args[1])
-	if err != nil {
-		return err
+	var sc scope.Scope
+	if flagPullRoot {
+		sc = scope.Root()
+	} else {
+		sc = scope.FromDir(dir)
 	}
 
 	cfg, err := config.Load()
@@ -112,7 +90,7 @@ func runPull(cmd *cobra.Command, args []string) error {
 		}
 		return pullTV(dir, sc, result, entry, client)
 	case "movie":
-		if sc.season > 0 {
+		if sc.Season() > 0 {
 			return fmt.Errorf("season scope is not valid for movies — use all or root")
 		}
 		return pullMovie(dir, entry, client)
@@ -123,7 +101,7 @@ func runPull(cmd *cobra.Command, args []string) error {
 
 // ─── TV ──────────────────────────────────────────────────────────────────────
 
-func pullTV(dir string, sc pullScope, result *scanner.ScanResult, entry *cache.Entry, client *tmdb.Client) error {
+func pullTV(dir string, sc scope.Scope, result *scanner.ScanResult, entry *cache.Entry, client *tmdb.Client) error {
 	detail, err := client.GetTVShow(entry.TMDBID)
 	if err != nil {
 		return fmt.Errorf("fetching show details: %w", err)
@@ -132,7 +110,7 @@ func pullTV(dir string, sc pullScope, result *scanner.ScanResult, entry *cache.E
 	fmt.Printf("Pulling: %s (%s)\n", detail.Name, detail.FirstAirDate[:minInt(4, len(detail.FirstAirDate))])
 
 	// ── Show-level ───────────────────────────────────────────────────────────
-	if sc.includesRoot() {
+	if sc.IncludesRoot() {
 		if flagPullMetadata {
 			fmt.Println("Writing tvshow.nfo …")
 			if err := nfo.WriteTVShow(dir, detail); err != nil {
@@ -148,13 +126,7 @@ func pullTV(dir string, sc pullScope, result *scanner.ScanResult, entry *cache.E
 	}
 
 	// ── Season / episode operations ──────────────────────────────────────────
-	seasons := scanner.UniqueSeasons(result.Files)
-	var inScope []int
-	for _, n := range seasons {
-		if sc.includesSeason(n) {
-			inScope = append(inScope, n)
-		}
-	}
+	inScope := sc.Seasons(result.Files)
 	if len(inScope) == 0 {
 		fmt.Println("Done.")
 		return nil
@@ -164,7 +136,7 @@ func pullTV(dir string, sc pullScope, result *scanner.ScanResult, entry *cache.E
 	if flagPullImages || flagPullAllImages {
 		var subset []tmdb.SeasonSummary
 		for _, s := range detail.Seasons {
-			if sc.includesSeason(s.SeasonNumber) {
+			if sc.IncludesSeason(s.SeasonNumber) {
 				subset = append(subset, s)
 			}
 		}
