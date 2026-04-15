@@ -68,8 +68,11 @@ func (c *Client) get(path string, params url.Values, out interface{}) error {
 	return json.Unmarshal(body, out)
 }
 
-func (c *Client) SearchTV(query string) ([]TVShow, error) {
+func (c *Client) SearchTV(query string, year int) ([]TVShow, error) {
 	params := url.Values{"query": {query}}
+	if year > 0 {
+		params.Set("first_air_date_year", fmt.Sprintf("%d", year))
+	}
 	var result SearchTVResult
 	if err := c.get("/search/tv", params, &result); err != nil {
 		return nil, err

@@ -13,14 +13,15 @@ import (
 
 var httpClient = &http.Client{Timeout: 60 * time.Second}
 
-func download(url, destPath string) error {
+func download(url, destPath string, force bool) error {
 	if url == "" {
 		return nil
 	}
 
-	// Skip if already exists
-	if _, err := os.Stat(destPath); err == nil {
-		return nil
+	if !force {
+		if _, err := os.Stat(destPath); err == nil {
+			return nil // already exists
+		}
 	}
 
 	resp, err := httpClient.Get(url)
@@ -48,48 +49,54 @@ func download(url, destPath string) error {
 }
 
 // DownloadTVShow downloads poster and fanart for a show into dir.
-func DownloadTVShow(dir string, detail *tmdb.TVShowDetail) error {
-	if err := download(tmdb.ImageURL(detail.PosterPath), filepath.Join(dir, "poster.jpg")); err != nil {
+func DownloadTVShow(dir string, detail *tmdb.TVShowDetail, force bool) error {
+	if err := download(tmdb.ImageURL(detail.PosterPath), filepath.Join(dir, "poster.jpg"), force); err != nil {
 		return fmt.Errorf("show poster: %w", err)
 	}
-	if err := download(tmdb.ImageURL(detail.BackdropPath), filepath.Join(dir, "fanart.jpg")); err != nil {
+	if err := download(tmdb.ImageURL(detail.BackdropPath), filepath.Join(dir, "fanart.jpg"), force); err != nil {
 		return fmt.Errorf("show fanart: %w", err)
 	}
 	return nil
 }
 
-// DownloadSeason downloads the season poster into dir.
-// Filename follows Kodi convention: season01-poster.jpg, season00-poster.jpg for specials.
-func DownloadSeason(showDir string, season *tmdb.Season) error {
-	if season.PosterPath == "" {
-		return nil
+// DownloadSeasonPosters downloads a poster for every season in the list.
+// Filenames follow the Kodi convention: season01-poster.jpg, season00-poster.jpg for specials.
+// Uses the SeasonSummary slice from TVShowDetail.Seasons so no extra API calls are needed.
+func DownloadSeasonPosters(showDir string, seasons []tmdb.SeasonSummary, force bool) error {
+	for _, s := range seasons {
+		if s.PosterPath == "" {
+			continue
+		}
+		var name string
+		if s.SeasonNumber == 0 {
+			name = "season00-poster.jpg"
+		} else {
+			name = fmt.Sprintf("season%02d-poster.jpg", s.SeasonNumber)
+		}
+		if err := download(tmdb.ImageURL(s.PosterPath), filepath.Join(showDir, name), force); err != nil {
+			return fmt.Errorf("season %d poster: %w", s.SeasonNumber, err)
+		}
 	}
-	var name string
-	if season.SeasonNumber == 0 {
-		name = "season00-poster.jpg"
-	} else {
-		name = fmt.Sprintf("season%02d-poster.jpg", season.SeasonNumber)
-	}
-	return download(tmdb.ImageURL(season.PosterPath), filepath.Join(showDir, name))
+	return nil
 }
 
 // DownloadEpisodeThumb downloads the episode still image next to the video file.
 // Filename: <video-base>-thumb.jpg
-func DownloadEpisodeThumb(videoPath string, ep *tmdb.Episode) error {
+func DownloadEpisodeThumb(videoPath string, ep *tmdb.Episode, force bool) error {
 	if ep.StillPath == "" {
 		return nil
 	}
 	ext := filepath.Ext(videoPath)
 	thumbPath := videoPath[:len(videoPath)-len(ext)] + "-thumb.jpg"
-	return download(tmdb.ImageURL(ep.StillPath), thumbPath)
+	return download(tmdb.ImageURL(ep.StillPath), thumbPath, force)
 }
 
 // DownloadMovie downloads poster and fanart for a movie into dir.
-func DownloadMovie(dir string, detail *tmdb.MovieDetail) error {
-	if err := download(tmdb.ImageURL(detail.PosterPath), filepath.Join(dir, "poster.jpg")); err != nil {
+func DownloadMovie(dir string, detail *tmdb.MovieDetail, force bool) error {
+	if err := download(tmdb.ImageURL(detail.PosterPath), filepath.Join(dir, "poster.jpg"), force); err != nil {
 		return fmt.Errorf("movie poster: %w", err)
 	}
-	if err := download(tmdb.ImageURL(detail.BackdropPath), filepath.Join(dir, "fanart.jpg")); err != nil {
+	if err := download(tmdb.ImageURL(detail.BackdropPath), filepath.Join(dir, "fanart.jpg"), force); err != nil {
 		return fmt.Errorf("movie fanart: %w", err)
 	}
 	return nil

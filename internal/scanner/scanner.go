@@ -30,7 +30,7 @@ type MediaFile struct {
 	Episode int
 }
 
-var videoExts = map[string]bool{
+var VideoExts = map[string]bool{
 	".mkv": true, ".mp4": true, ".avi": true,
 	".mov": true, ".wmv": true, ".m4v": true,
 	".ts": true, ".m2ts": true,
@@ -82,7 +82,7 @@ func cleanTitle(raw string) string {
 
 func ParseFile(path string, hint MediaType) (*MediaFile, error) {
 	ext := strings.ToLower(filepath.Ext(path))
-	if !videoExts[ext] {
+	if !VideoExts[ext] {
 		return nil, fmt.Errorf("not a video file")
 	}
 
