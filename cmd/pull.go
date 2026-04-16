@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-
 	"github.com/spf13/cobra"
 	"go-media-manage/internal/cache"
 	"go-media-manage/internal/config"
@@ -321,20 +320,18 @@ func pullList(dir string, result *scanner.ScanResult, entry *cache.Entry, client
 		}
 	}
 
-	// Sort video files by filename for deterministic positional matching.
-	files := result.Files
-	sortFilesByName(files)
-
-	if len(files) != len(items) {
-		fmt.Fprintf(os.Stderr, "warning: %d video file(s) but %d list item(s) — matching by position up to the smaller count\n",
-			len(files), len(items))
-	}
-
-	limit := minInt(len(files), len(items))
-	for i := 0; i < limit; i++ {
-		f := files[i]
-		item := &items[i]
-		episode := i + 1
+	for _, f := range result.Files {
+		episode := scanner.ParseBareEpisode(f.Base)
+		if episode <= 0 {
+			fmt.Fprintf(os.Stderr, "  warning: cannot determine episode number from %q, skipping\n", f.Base)
+			continue
+		}
+		idx := episode - 1
+		if idx >= len(items) {
+			fmt.Fprintf(os.Stderr, "  warning: episode %d out of range (list has %d items), skipping %q\n", episode, len(items), f.Base)
+			continue
+		}
+		item := &items[idx]
 		fmt.Printf("  S01E%02d %s\n", episode, item.EffectiveTitle())
 		if flagPullMetadata {
 			if err := nfo.WriteEpisodeFromListItem(f.Path, item, 1, episode); err != nil {
@@ -352,13 +349,6 @@ func pullList(dir string, result *scanner.ScanResult, entry *cache.Entry, client
 	return nil
 }
 
-func sortFilesByName(files []*scanner.MediaFile) {
-	for i := 1; i < len(files); i++ {
-		for j := i; j > 0 && files[j].Base < files[j-1].Base; j-- {
-			files[j], files[j-1] = files[j-1], files[j]
-		}
-	}
-}
 
 func minInt(a, b int) int {
 	if a < b {

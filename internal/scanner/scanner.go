@@ -38,9 +38,9 @@ var VideoExts = map[string]bool{
 
 // TV patterns: matches S01E02, 1x02, s01e02, etc.
 var tvPatterns = []*regexp.Regexp{
-	regexp.MustCompile(`(?i)[._\s-]s(\d{1,2})e(\d{1,2})`),
-	regexp.MustCompile(`(?i)[._\s-](\d{1,2})x(\d{2})`),
-	regexp.MustCompile(`(?i)[._\s-](\d{1,2})x(\d{2})[._\s-]`),
+	regexp.MustCompile(`(?i)[._\s-]s(\d{1,2})e(\d{1,3})`),
+	regexp.MustCompile(`(?i)[._\s-](\d{1,2})x(\d{2,3})`),
+	regexp.MustCompile(`(?i)[._\s-](\d{1,2})x(\d{2,3})[._\s-]`),
 }
 
 // Movie year pattern
@@ -52,6 +52,21 @@ var seasonDirPattern = regexp.MustCompile(`(?i)^s(?:eason\s*)?(\d{1,2})$`)
 // bareEpPattern matches filenames that start with an episode number followed by a
 // dash or space separator, e.g. "01 - Title" or "01-Title".
 var bareEpPattern = regexp.MustCompile(`^(\d{1,3})[\s-]`)
+
+// ParseBareEpisode returns the leading episode number from a base filename (no
+// extension) such as "01 - Title" or "042-Title". It also handles a filename
+// that is entirely numeric (e.g. "42"). Returns 0 if no episode number is found.
+func ParseBareEpisode(base string) int {
+	if n, err := strconv.Atoi(base); err == nil {
+		return n
+	}
+	m := bareEpPattern.FindStringSubmatch(base)
+	if m == nil {
+		return 0
+	}
+	n, _ := strconv.Atoi(m[1])
+	return n
+}
 
 // ParseSeasonDir returns the season number and whether the directory name matches
 // a season pattern (e.g. "Season 0", "Season 1", "S01", "Specials"). Returns
