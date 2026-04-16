@@ -15,20 +15,27 @@ import (
 	"go-media-manage/internal/tmdb"
 )
 
-var flagMatchType string
+var (
+	flagMatchType   string
+	flagMatchListID int
+)
 
 var matchCmd = &cobra.Command{
 	Use:   "match <directory>",
 	Short: "Match a directory against TMDB and cache the result",
 	Long: `Scans a directory, searches TMDB for the best match, and saves the
 result to matches.json inside the directory. Run 'pull' afterwards to
-download metadata and artwork.`,
+download metadata and artwork.
+
+Use --list-id to treat a TMDB list as a single-season TV series. Each item
+in the list becomes an episode, ordered by release date.`,
 	Args: cobra.ExactArgs(1),
 	RunE: runMatch,
 }
 
 func init() {
 	matchCmd.Flags().StringVarP(&flagMatchType, "type", "t", "auto", "Media type: auto, tv, movie")
+	matchCmd.Flags().IntVar(&flagMatchListID, "list-id", 0, "TMDB list ID to treat as a single-season TV series")
 	rootCmd.AddCommand(matchCmd)
 }
 
@@ -56,13 +63,17 @@ func runMatch(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	fmt.Printf("Found %d video file(s) — detected type: %s\n", len(result.Files), result.MediaType)
-
 	client := tmdb.NewClient(cfg.TMDBToken, cfg.Language)
 	c, err := cache.New(dir)
 	if err != nil {
 		return err
 	}
+
+	if flagMatchListID != 0 {
+		return matchList(flagMatchListID, result, client, c)
+	}
+
+	fmt.Printf("Found %d video file(s) — detected type: %s\n", len(result.Files), result.MediaType)
 
 	switch result.MediaType {
 	case scanner.TypeTV:
@@ -72,6 +83,40 @@ func runMatch(cmd *cobra.Command, args []string) error {
 	default:
 		return fmt.Errorf("unknown media type")
 	}
+}
+
+func matchList(listID int, result *scanner.ScanResult, client *tmdb.Client, c *cache.Cache) error {
+	list, err := client.GetList(listID)
+	if err != nil {
+		return fmt.Errorf("fetching list %d: %w", listID, err)
+	}
+
+	fmt.Printf("List: %q — %d item(s)\n", list.Name, len(list.Items))
+	if list.Description != "" {
+		fmt.Printf("      %s\n", list.Description)
+	}
+
+	// Lists have no poster/backdrop, so anchor the show root to a movie entry.
+	fmt.Printf("\nSearching TMDB for movie: %q (year: %d)\n", result.Title, result.Year)
+	movies, err := client.SearchMovie(result.Title, result.Year)
+	if err != nil {
+		return fmt.Errorf("searching movies: %w", err)
+	}
+	if len(movies) == 0 {
+		return fmt.Errorf("no movie results for %q", result.Title)
+	}
+
+	movie, err := pickMovie(movies)
+	if err != nil {
+		return err
+	}
+
+	if err := c.SetList(list.Name, movie.ID, list.ID); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: could not save match: %v\n", err)
+	}
+	fmt.Printf("\nMatched: %s — root movie: %s [TMDB %d], season 1 from list %d\n",
+		list.Name, movie.Title, movie.ID, list.ID)
+	return nil
 }
 
 func matchTV(result *scanner.ScanResult, client *tmdb.Client, c *cache.Cache) error {

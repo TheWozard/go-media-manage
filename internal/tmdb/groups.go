@@ -2,9 +2,20 @@ package tmdb
 
 import (
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 )
+
+// SortListItems returns a copy of items sorted by release/air date ascending.
+func SortListItems(items []ListItem) []ListItem {
+	sorted := make([]ListItem, len(items))
+	copy(sorted, items)
+	sort.Slice(sorted, func(i, j int) bool {
+		return sorted[i].EffectiveDate() < sorted[j].EffectiveDate()
+	})
+	return sorted
+}
 
 var groupSeasonNameRe = regexp.MustCompile(`(?i)season\s*(\d+)`)
 

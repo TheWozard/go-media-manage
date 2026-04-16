@@ -14,6 +14,46 @@ type SearchMovieResult struct {
 	TotalResults int     `json:"total_results"`
 }
 
+// List types
+
+type List struct {
+	ID          int        `json:"id"`
+	Name        string     `json:"name"`
+	Description string     `json:"description"`
+	PosterPath  string     `json:"poster_path"`
+	Items       []ListItem `json:"items"`
+	TotalPages  int        `json:"total_pages"`
+	Page        int        `json:"page"`
+}
+
+type ListItem struct {
+	ID           int     `json:"id"`
+	Title        string  `json:"title"`         // movies
+	Name         string  `json:"name"`          // TV
+	Overview     string  `json:"overview"`
+	ReleaseDate  string  `json:"release_date"`  // movies
+	FirstAirDate string  `json:"first_air_date"` // TV
+	PosterPath   string  `json:"poster_path"`
+	BackdropPath string  `json:"backdrop_path"`
+	VoteAverage  float64 `json:"vote_average"`
+	VoteCount    int     `json:"vote_count"`
+	MediaType    string  `json:"media_type"`
+}
+
+func (i ListItem) EffectiveTitle() string {
+	if i.Title != "" {
+		return i.Title
+	}
+	return i.Name
+}
+
+func (i ListItem) EffectiveDate() string {
+	if i.ReleaseDate != "" {
+		return i.ReleaseDate
+	}
+	return i.FirstAirDate
+}
+
 // TV types
 
 type TVShow struct {

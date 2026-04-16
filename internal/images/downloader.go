@@ -91,6 +91,24 @@ func DownloadEpisodeThumb(videoPath string, ep *tmdb.Episode, force bool) error 
 	return download(tmdb.ImageURL(ep.StillPath), thumbPath, force)
 }
 
+// DownloadListPoster downloads the list poster into dir as poster.jpg.
+func DownloadListPoster(dir string, list *tmdb.List, force bool) error {
+	if err := download(tmdb.ImageURL(list.PosterPath), filepath.Join(dir, "poster.jpg"), force); err != nil {
+		return fmt.Errorf("list poster: %w", err)
+	}
+	return nil
+}
+
+// DownloadListItemThumb downloads a list item's poster as the episode thumb next to the video file.
+func DownloadListItemThumb(videoPath string, item *tmdb.ListItem, force bool) error {
+	if item.PosterPath == "" {
+		return nil
+	}
+	ext := filepath.Ext(videoPath)
+	thumbPath := videoPath[:len(videoPath)-len(ext)] + "-thumb.jpg"
+	return download(tmdb.ImageURL(item.PosterPath), thumbPath, force)
+}
+
 // DownloadMovie downloads poster and fanart for a movie into dir.
 func DownloadMovie(dir string, detail *tmdb.MovieDetail, force bool) error {
 	if err := download(tmdb.ImageURL(detail.PosterPath), filepath.Join(dir, "poster.jpg"), force); err != nil {

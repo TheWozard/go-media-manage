@@ -13,6 +13,7 @@ type Entry struct {
 	Title          string    `json:"title"`
 	MediaType      string    `json:"media_type"`
 	EpisodeGroupID string    `json:"episode_group_id,omitempty"`
+	ListID         int       `json:"list_id,omitempty"` // set when media_type == "list"
 	MatchedAt      time.Time `json:"matched_at"`
 }
 
@@ -37,6 +38,21 @@ func (c *Cache) Get() (*Entry, bool) {
 		return nil, false
 	}
 	return &e, true
+}
+
+func (c *Cache) SetList(title string, movieID, listID int) error {
+	e := &Entry{
+		TMDBID:    movieID,
+		ListID:    listID,
+		Title:     title,
+		MediaType: "list",
+		MatchedAt: time.Now(),
+	}
+	data, err := json.MarshalIndent(e, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(c.path, data, 0644)
 }
 
 func (c *Cache) Set(mediaType, title string, tmdbID int, episodeGroupID string) error {

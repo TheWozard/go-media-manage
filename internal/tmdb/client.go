@@ -134,6 +134,23 @@ func (c *Client) GetEpisodeGroup(groupID string) (*EpisodeGroup, error) {
 	return &group, nil
 }
 
+func (c *Client) GetList(id int) (*List, error) {
+	var list List
+	params := url.Values{"page": {"1"}}
+	if err := c.get(fmt.Sprintf("/list/%d", id), params, &list); err != nil {
+		return nil, err
+	}
+	for page := 2; page <= list.TotalPages; page++ {
+		var next List
+		params := url.Values{"page": {fmt.Sprintf("%d", page)}}
+		if err := c.get(fmt.Sprintf("/list/%d", id), params, &next); err != nil {
+			return nil, fmt.Errorf("fetching page %d: %w", page, err)
+		}
+		list.Items = append(list.Items, next.Items...)
+	}
+	return &list, nil
+}
+
 // ImageURL returns the full URL for an image path.
 func ImageURL(path string) string {
 	if path == "" {

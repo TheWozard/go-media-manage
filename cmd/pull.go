@@ -94,6 +94,15 @@ func runPull(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("season scope is not valid for movies — use all or root")
 		}
 		return pullMovie(dir, entry, client)
+	case "list":
+		if sc.IsSeasonScope() {
+			return fmt.Errorf("season scope is not valid for lists — use the show root directory")
+		}
+		result, err := scanner.Scan(dir, scanner.TypeMovie)
+		if err != nil {
+			return err
+		}
+		return pullList(dir, result, entry, client)
 	default:
 		return fmt.Errorf("unknown media type %q in cache", entry.MediaType)
 	}
@@ -280,6 +289,75 @@ func pullMovie(dir string, entry *cache.Entry, client *tmdb.Client) error {
 
 	fmt.Println("Done.")
 	return nil
+}
+
+// ─── List ─────────────────────────────────────────────────────────────────────
+
+func pullList(dir string, result *scanner.ScanResult, entry *cache.Entry, client *tmdb.Client) error {
+	// The anchor movie provides show-root artwork and tvshow.nfo.
+	movie, err := client.GetMovie(entry.TMDBID)
+	if err != nil {
+		return fmt.Errorf("fetching anchor movie: %w", err)
+	}
+
+	list, err := client.GetList(entry.ListID)
+	if err != nil {
+		return fmt.Errorf("fetching list: %w", err)
+	}
+
+	items := tmdb.SortListItems(list.Items)
+	fmt.Printf("Pulling: %s — season 1 from list %q (%d items)\n", movie.Title, list.Name, len(items))
+
+	if flagPullMetadata {
+		fmt.Println("Writing tvshow.nfo …")
+		if err := nfo.WriteTVShowFromMovie(dir, movie); err != nil {
+			return err
+		}
+	}
+	if flagPullImages || flagPullAllImages {
+		fmt.Println("Downloading show artwork …")
+		if err := images.DownloadMovie(dir, movie, flagPullAllImages); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: %v\n", err)
+		}
+	}
+
+	// Sort video files by filename for deterministic positional matching.
+	files := result.Files
+	sortFilesByName(files)
+
+	if len(files) != len(items) {
+		fmt.Fprintf(os.Stderr, "warning: %d video file(s) but %d list item(s) — matching by position up to the smaller count\n",
+			len(files), len(items))
+	}
+
+	limit := minInt(len(files), len(items))
+	for i := 0; i < limit; i++ {
+		f := files[i]
+		item := &items[i]
+		episode := i + 1
+		fmt.Printf("  S01E%02d %s\n", episode, item.EffectiveTitle())
+		if flagPullMetadata {
+			if err := nfo.WriteEpisodeFromListItem(f.Path, item, 1, episode); err != nil {
+				fmt.Fprintf(os.Stderr, "  warning: nfo: %v\n", err)
+			}
+		}
+		if flagPullImages || flagPullAllImages {
+			if err := images.DownloadListItemThumb(f.Path, item, flagPullAllImages); err != nil {
+				fmt.Fprintf(os.Stderr, "  warning: thumb: %v\n", err)
+			}
+		}
+	}
+
+	fmt.Println("Done.")
+	return nil
+}
+
+func sortFilesByName(files []*scanner.MediaFile) {
+	for i := 1; i < len(files); i++ {
+		for j := i; j > 0 && files[j].Base < files[j-1].Base; j-- {
+			files[j], files[j-1] = files[j-1], files[j]
+		}
+	}
 }
 
 func minInt(a, b int) int {

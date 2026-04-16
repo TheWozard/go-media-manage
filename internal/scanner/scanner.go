@@ -144,9 +144,10 @@ func ParseFile(path string, hint MediaType) (*MediaFile, error) {
 		}
 	}
 
-	// Fall back to movie
+	// Fall back to movie — use folder name for title/year (more reliable than filename)
 	mf.Type = TypeMovie
-	if m := yearPattern.FindStringSubmatch(baseNoExt); m != nil {
+	folderName := filepath.Base(filepath.Dir(path))
+	if m := yearPattern.FindStringSubmatch(folderName); m != nil {
 		for i := 1; i < len(m); i++ {
 			if m[i] != "" {
 				mf.Year, _ = strconv.Atoi(m[i])
@@ -154,7 +155,7 @@ func ParseFile(path string, hint MediaType) (*MediaFile, error) {
 			}
 		}
 	}
-	mf.Title = cleanTitle(baseNoExt)
+	mf.Title = cleanTitle(folderName)
 	return mf, nil
 }
 

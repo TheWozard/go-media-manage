@@ -195,6 +195,50 @@ func WriteEpisode(videoPath string, ep *tmdb.Episode, showTMDBID int) error {
 	return write(nfoPath, nfo)
 }
 
+func WriteTVShowFromMovie(dir string, detail *tmdb.MovieDetail) error {
+	genres := make([]string, len(detail.Genres))
+	for i, g := range detail.Genres {
+		genres[i] = g.Name
+	}
+	nfo := &TVShowNFO{
+		Title:   detail.Title,
+		Year:    airYear(detail.ReleaseDate),
+		Plot:    detail.Overview,
+		Tagline: detail.Tagline,
+		Rating:  detail.VoteAverage,
+		Votes:   detail.VoteCount,
+		TMDBID:  detail.ID,
+		IMDBID:  detail.ExternalIDs.IMDBID,
+		Genres:  genres,
+		MPAA:    movieRating(detail),
+	}
+	return write(filepath.Join(dir, "tvshow.nfo"), nfo)
+}
+
+func WriteTVShowFromList(dir string, list *tmdb.List) error {
+	nfo := &TVShowNFO{
+		Title:  list.Name,
+		Plot:   list.Description,
+		TMDBID: list.ID,
+	}
+	return write(filepath.Join(dir, "tvshow.nfo"), nfo)
+}
+
+func WriteEpisodeFromListItem(videoPath string, item *tmdb.ListItem, season, episode int) error {
+	nfoPath := strings.TrimSuffix(videoPath, filepath.Ext(videoPath)) + ".nfo"
+	nfo := &EpisodeNFO{
+		Title:   item.EffectiveTitle(),
+		Season:  season,
+		Episode: episode,
+		Plot:    item.Overview,
+		Rating:  item.VoteAverage,
+		Votes:   item.VoteCount,
+		Aired:   item.EffectiveDate(),
+		TMDBID:  item.ID,
+	}
+	return write(nfoPath, nfo)
+}
+
 func WriteMovie(dir string, detail *tmdb.MovieDetail) error {
 	genres := make([]string, len(detail.Genres))
 	for i, g := range detail.Genres {
