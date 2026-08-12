@@ -1,0 +1,42 @@
+version: 2
+
+project_name: gmm
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: gmm
+    main: ./gmm
+    binary: gmm
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X go-media-manage/internal/version.Version={{ .Version }}
+      - -X go-media-manage/internal/version.Commit={{ .ShortCommit }}
+      - -X go-media-manage/internal/version.Date={{ .Date }}
+
+archives:
+  - id: gmm
+    formats: [tar.gz]
+    name_template: "gmm_{{ .Os }}_{{ .Arch }}"
+    files:
+      - README.md
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
