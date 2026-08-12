@@ -56,11 +56,19 @@ go-media-manage rename /media/TV/Breaking\ Bad
 
 ## Installation
 
-**Prebuilt binary (recommended):** grab the latest release for your platform (macOS/Linux, amd64/arm64) from the [Releases page](https://github.com/TheWozard/go-media-manage/releases), extract the `gmm` binary, and put it on your `$PATH`. Once installed, keep it up to date with:
+**Install script (recommended):** downloads the latest release for your platform (macOS/Linux, amd64/arm64), verifies its checksum, and installs `gmm` to `~/.local/bin`:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/TheWozard/go-media-manage/main/scripts/install.sh | sh
+```
+
+Set `GMM_INSTALL_DIR` to install elsewhere. Once installed, keep it up to date with:
 
 ```sh
 gmm update
 ```
+
+**Manual download:** grab the archive for your platform from the [Releases page](https://github.com/TheWozard/go-media-manage/releases) instead, and extract the `gmm` binary yourself.
 
 **From source:** requires Go 1.26+.
 
