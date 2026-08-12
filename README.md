@@ -212,3 +212,24 @@ Language   : en-US
 ## NFO format
 
 NFO files follow the Jellyfin/Kodi XML schema and are compatible with Jellyfin, Emby, and any media server that reads Kodi-style metadata.
+
+## Releasing
+
+Releases are cut by pushing a semver tag to `main`. Pushing the tag triggers [.github/workflows/release.yml](.github/workflows/release.yml), which runs GoReleaser to cross-compile `gmm` for macOS/Linux (amd64/arm64), publish the archives and a `checksums.txt` as release assets, and generate release notes from the commits since the last tag.
+
+```sh
+git checkout main
+git pull
+
+git tag v1.2.3
+git push origin v1.2.3
+```
+
+The tag must match `v*.*.*` (see the `on.push.tags` filter in the workflow) and follow [semver](https://semver.org/). Once the workflow finishes, the new version is live on the [Releases page](https://github.com/TheWozard/go-media-manage/releases) and `gmm update` will pick it up.
+
+To fix a bad release, delete the GitHub release and the tag, then push a corrected tag:
+
+```sh
+git push --delete origin v1.2.3
+git tag -d v1.2.3
+```
