@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
+	"go-media-manage/internal/version"
 )
 
 var rootCmd = &cobra.Command{
@@ -12,6 +13,7 @@ var rootCmd = &cobra.Command{
 	Short: "CLI media manager — fetch metadata and artwork from TMDB",
 	Long: `go-media-manage scans a directory for video files, matches them against
 TMDB, and writes Jellyfin-compatible NFO files and artwork (poster, backdrop, thumbs).`,
+	Version: version.Version,
 }
 
 func Execute() {
